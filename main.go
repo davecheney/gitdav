@@ -48,7 +48,7 @@ func main() {
 		LockSystem: webdav.NewMemLS(),
 		Logger: func(req *http.Request, err error) {
 			if err != nil {
-				log.Println(err)
+				log.Printf("%+v", err)
 				return
 			}
 			log.Printf("%v %v %v\n", req.Method, req.URL, req.Proto)
@@ -68,16 +68,34 @@ func (d *dir) Mkdir(path string, mode os.FileMode) error { return os.ErrInvalid 
 func (d *dir) OpenFile(name string, flag int, perm os.FileMode) (webdav.File, error) {
 	fmt.Println("OpenFile", name)
 	dir, f := path.Split(name)
-	if dir != "/" || f != "" {
-		return &file{
-			name: f,
+	if dir == "/" && f == "" {
+		return &tree{
+			name: dir,
 			tree: d.root,
 		}, nil
 	}
-	return &file{
-		name: dir,
-		tree: d.root,
-	}, nil
+
+	if dir == "/" {
+		// local file
+		b, err := d.root.Blob(f)
+		if err == nil {
+			return &blob{
+				name: f,
+				Blob: b,
+			}, nil
+		}
+
+		t, err := d.root.Tree(f)
+		if err != nil {
+			return nil, err
+		}
+		return &tree{
+			name: f,
+			tree: t,
+		}, nil
+	}
+
+	return nil, os.ErrNotExist
 }
 
 func (d *dir) RemoveAll(name string) error {
@@ -92,27 +110,27 @@ func (d *dir) Stat(name string) (os.FileInfo, error) {
 	return &fileinfo{name: name, mode: os.ModeDir | 0644}, nil
 }
 
-type file struct {
+type tree struct {
 	name string
 	tree *git.Tree
 }
 
-func (f *file) Close() error             { return nil }
-func (f *file) Read([]byte) (int, error) { return 0, os.ErrInvalid }
-func (f *file) Readdir(int) ([]os.FileInfo, error) {
+func (t *tree) Close() error             { return nil }
+func (t *tree) Read([]byte) (int, error) { return 0, os.ErrInvalid }
+func (t *tree) Readdir(int) ([]os.FileInfo, error) {
 	// TODO(dfc) respect n
 	var entries []os.FileInfo
-	for _, e := range f.tree.Entries {
+	for _, e := range t.tree.Entries {
 		entries = append(entries, &fileinfo{name: e.Name, mode: os.FileMode(e.Mode)})
 	}
 	return entries, nil
 }
 
-func (f *file) Seek(offset int64, whence int) (int64, error) { return 0, os.ErrInvalid }
-func (f *file) Stat() (os.FileInfo, error) {
-	return &fileinfo{name: f.name, mode: os.ModeDir | 0644}, nil
+func (t *tree) Seek(offset int64, whence int) (int64, error) { return 0, os.ErrInvalid }
+func (t *tree) Stat() (os.FileInfo, error) {
+	return &fileinfo{name: t.name, mode: os.ModeDir | 0644}, nil
 }
-func (f *file) Write(p []byte) (int, error) { return 0, os.ErrInvalid }
+func (t *tree) Write(p []byte) (int, error) { return 0, os.ErrInvalid }
 
 type fileinfo struct {
 	name string
@@ -126,3 +144,16 @@ func (fi *fileinfo) Mode() os.FileMode  { return fi.mode }
 func (fi *fileinfo) ModTime() time.Time { return time.Now() }
 func (fi *fileinfo) IsDir() bool        { return fi.Mode().IsDir() }
 func (fi *fileinfo) Sys() interface{}   { return nil }
+
+type blob struct {
+	name string
+	*git.Blob
+}
+
+func (b *blob) Readdir(int) ([]os.FileInfo, error) { return nil, os.ErrInvalid }
+
+func (b *blob) Seek(offset int64, whence int) (int64, error) { return 0, os.ErrInvalid }
+func (b *blob) Stat() (os.FileInfo, error) {
+	return &fileinfo{name: b.name, mode: 0644}, nil
+}
+func (b *blob) Write(p []byte) (int, error) { return 0, os.ErrInvalid }
