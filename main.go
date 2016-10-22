@@ -121,7 +121,12 @@ func (t *tree) Readdir(int) ([]os.FileInfo, error) {
 	// TODO(dfc) respect n
 	var entries []os.FileInfo
 	for _, e := range t.tree.Entries {
-		entries = append(entries, &fileinfo{name: e.Name, mode: os.FileMode(e.Mode)})
+		b, err := t.tree.Blob(e.Name)
+		if err != nil {
+			entries = append(entries, &fileinfo{name: e.Name, mode: e.Mode})
+		} else {
+			entries = append(entries, &fileinfo{name: e.Name, size: b.Size, mode: e.Mode})
+		}
 	}
 	return entries, nil
 }
@@ -154,6 +159,6 @@ func (b *blob) Readdir(int) ([]os.FileInfo, error) { return nil, os.ErrInvalid }
 
 func (b *blob) Seek(offset int64, whence int) (int64, error) { return 0, os.ErrInvalid }
 func (b *blob) Stat() (os.FileInfo, error) {
-	return &fileinfo{name: b.name, mode: 0644}, nil
+	return &fileinfo{name: b.name, size: b.Size, mode: 0644}, nil
 }
 func (b *blob) Write(p []byte) (int, error) { return 0, os.ErrInvalid }
