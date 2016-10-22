@@ -66,7 +66,6 @@ type dir struct {
 func (d *dir) Mkdir(path string, mode os.FileMode) error { return os.ErrInvalid }
 
 func (d *dir) OpenFile(name string, flag int, perm os.FileMode) (webdav.File, error) {
-	fmt.Println("OpenFile", name)
 	dir, f := path.Split(name)
 	if dir == "/" && f == "" {
 		return &tree{
@@ -95,7 +94,14 @@ func (d *dir) OpenFile(name string, flag int, perm os.FileMode) (webdav.File, er
 		}, nil
 	}
 
-	return nil, os.ErrNotExist
+	t, err := d.root.Tree(dir)
+	if err != nil {
+		return nil, err
+	}
+	return &tree{
+		name: f,
+		tree: t,
+	}, nil
 }
 
 func (d *dir) RemoveAll(name string) error {
@@ -131,7 +137,9 @@ func (t *tree) Readdir(int) ([]os.FileInfo, error) {
 	return entries, nil
 }
 
-func (t *tree) Seek(offset int64, whence int) (int64, error) { return 0, os.ErrInvalid }
+func (t *tree) Seek(offset int64, whence int) (int64, error) {
+	return 0, os.ErrInvalid
+}
 func (t *tree) Stat() (os.FileInfo, error) {
 	return &fileinfo{name: t.name, mode: os.ModeDir | 0644}, nil
 }
@@ -157,7 +165,13 @@ type blob struct {
 
 func (b *blob) Readdir(int) ([]os.FileInfo, error) { return nil, os.ErrInvalid }
 
-func (b *blob) Seek(offset int64, whence int) (int64, error) { return 0, os.ErrInvalid }
+func (b *blob) Seek(offset int64, whence int) (int64, error) {
+	fmt.Println("seek: offset:", offset, "whence:", whence)
+	if offset == 0 && whence == 0 {
+		return 0, nil
+	}
+	return 0, os.ErrInvalid
+}
 func (b *blob) Stat() (os.FileInfo, error) {
 	return &fileinfo{name: b.name, size: b.Size, mode: 0644}, nil
 }
