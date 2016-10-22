@@ -3,7 +3,7 @@ package main
 
 import (
 	"flag"
-	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -166,11 +166,16 @@ type blob struct {
 func (b *blob) Readdir(int) ([]os.FileInfo, error) { return nil, os.ErrInvalid }
 
 func (b *blob) Seek(offset int64, whence int) (int64, error) {
-	fmt.Println("seek: offset:", offset, "whence:", whence)
-	if offset == 0 && whence == 0 {
+	// work around the way net/http.ServeContent's seeking to the end then
+	// rewind to the start behaviour to get the size of a file ...
+	switch {
+	case offset == 0 && whence == io.SeekEnd:
+		return b.Size, nil
+	case offset == 0 && whence == io.SeekStart:
 		return 0, nil
+	default:
+		return 0, os.ErrInvalid
 	}
-	return 0, os.ErrInvalid
 }
 func (b *blob) Stat() (os.FileInfo, error) {
 	return &fileinfo{name: b.name, size: b.Size, mode: 0644}, nil
